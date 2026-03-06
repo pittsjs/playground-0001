@@ -4,7 +4,7 @@
  * Ties together physics.js and renderer.js. Owns the game loop,
  * input handling, and the collection of table objects.
  *
- * Step 4: Expanded board (600×1000), circular bumpers, and hoop targets.
+ * Step 7: Visual polish — ball trail, hit particles, screen flash, glow.
  *
  * Controls:
  *   Z / Left Arrow  — left flipper
@@ -32,6 +32,30 @@
   const HOOP_BOUNCE    = 0.8;   // moderate bounce off hoop rim
   const COLLISION_PASSES = 3;
   const MAX_SUBSTEP = 0.005;  // prevents fast ball from tunneling through walls
+
+  // Scoring + game flow
+  const BUMPER_POINTS = 50;
+  const HOOP_POINTS = 250;
+  const RAMP_POINTS = 500;
+  const HIT_SCORE_COOLDOWN = 120; // ms between scoring from the same object
+
+  const BALLS_PER_GAME = 3;
+
+  // Combo: each scoring hit within COMBO_TIMEOUT adds to combo; multiplier scales.
+  const COMBO_TIMEOUT = 2000;       // ms without a hit resets combo
+  const COMBO_MULTIPLIER_PER_HIT = 0.25;  // 1x, 1.25x, 1.5x, 1.75x, 2x...
+  const COMBO_CAP = 5;             // max combo hits (2.25x at 5)
+
+  // On Fire: triggered after ON_FIRE_TRIGGER hits in a row; lasts ON_FIRE_DURATION ms.
+  const ON_FIRE_TRIGGER = 3;
+  const ON_FIRE_DURATION = 5000;
+  const ON_FIRE_SCORE_MULT = 2;    // 2x points while on fire
+
+  const STATE = {
+    READY: "ready",      // ball waiting in plunger, launch to start / next ball
+    LIVE: "live",        // ball is in play
+    GAME_OVER: "gameover",
+  };
 
   const PLUNGER_MAX_VEL    = 2200;  // scaled up for taller table
   const PLUNGER_MIN_VEL    = 900;
@@ -126,13 +150,48 @@
     { x: 430, y: 580, radius: 20, lastHit: 0 },   // right side
   ];
 
-  /* ── Ball + plunger state ──────────────────────────────────── */
+  /* ── Ramp targets (high-value scoops) ─────────────────────────
+   *  No guide walls — those created trapping pockets. Ball reaches
+   *  them by bouncing off bumpers and flippers.
+   */
+  const RAMP_BOUNCE = 0.6;
+  const ramps = [
+    { x: 145, y: 455, radius: 28, lastHit: 0 },   // left ramp scoop
+    { x: 410, y: 455, radius: 28, lastHit: 0 },   // right ramp scoop
+  ];
+
+  /* ── Ball + plunger + score state ──────────────────────────── */
 
   let ball = Physics.createBall(PLUNGER_BALL_X, PLUNGER_BALL_Y, BALL_RADIUS);
   let plungerReady    = true;
   let plungerCharging = false;
   let plungerPower    = 0;
   let ballInPlay      = false;
+
+  let score = 0;
+  let ballsRemaining = BALLS_PER_GAME;
+  let highScore = 0;
+  let gameState = STATE.READY;
+
+  // Combo: consecutive scoring hits within COMBO_TIMEOUT
+  let lastComboHitTime = 0;
+  let comboCount = 0;
+  // On Fire: active when ts < onFireUntil (set after COMBO_TRIGGER hits)
+  let onFireUntil = 0;
+
+  // Visual polish: ball trail (last N positions) and particles
+  const BALL_TRAIL_LEN = 12;
+  const ballTrail = [];
+  const particles = [];
+  let screenFlashUntil = 0;  // brief flash when On Fire triggers
+
+  // Load high score from localStorage if available (non-fatal if it fails).
+  try {
+    const stored = localStorage.getItem("basketballPinballHighScore");
+    if (stored) highScore = parseInt(stored, 10) || 0;
+  } catch {
+    highScore = 0;
+  }
 
   // One-way gate: extends the separator up to the top wall.
   // Activated only after the ball enters play (blocks re-entry).
@@ -144,6 +203,89 @@
     plungerCharging = false;
     plungerPower    = 0;
     ballInPlay      = false;
+    ballTrail.length = 0;
+  }
+
+  /** Spawn burst particles at (x, y) for scoring hits. */
+  function spawnParticles(x, y, color) {
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2 + Math.random() * 0.5;
+      const speed = 80 + Math.random() * 120;
+      particles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 1,
+        maxLife: 1,
+        color,
+      });
+    }
+  }
+
+  /** Update particles: move and decay. */
+  function updateParticles(dt) {
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.life -= dt * 2.5;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+  }
+
+  function persistHighScore() {
+    try {
+      localStorage.setItem("basketballPinballHighScore", String(highScore));
+    } catch {
+      // ignore storage errors
+    }
+  }
+
+  function maybeUpdateHighScore() {
+    if (score > highScore) {
+      highScore = score;
+      persistHighScore();
+    }
+  }
+
+  function startNewGame() {
+    score = 0;
+    ballsRemaining = BALLS_PER_GAME;
+    gameState = STATE.READY;
+    lastComboHitTime = 0;
+    comboCount = 0;
+    onFireUntil = 0;
+    resetToPlunger();
+  }
+
+  /** Add points with combo and On Fire multipliers; updates combo state. */
+  function addScore(basePoints, ts) {
+    if (ts - lastComboHitTime > COMBO_TIMEOUT) comboCount = 0;
+    let mult = 1 + Math.min(comboCount, COMBO_CAP) * COMBO_MULTIPLIER_PER_HIT;
+    if (ts < onFireUntil) mult *= ON_FIRE_SCORE_MULT;
+    score += Math.round(basePoints * mult);
+    comboCount += 1;
+    lastComboHitTime = ts;
+    if (comboCount >= ON_FIRE_TRIGGER) {
+      onFireUntil = ts + ON_FIRE_DURATION;
+      screenFlashUntil = ts + 250;
+    }
+  }
+
+  function loseBall() {
+    if (gameState === STATE.GAME_OVER) return;
+
+    ballsRemaining -= 1;
+    comboCount = 0;
+    onFireUntil = 0;
+    if (ballsRemaining > 0) {
+      gameState = STATE.READY;
+      resetToPlunger();
+    } else {
+      gameState = STATE.GAME_OVER;
+      maybeUpdateHighScore();
+      resetToPlunger();
+    }
   }
 
   /* ── Input ─────────────────────────────────────────────────── */
@@ -155,6 +297,10 @@
 
     if (e.code === "Space") {
       e.preventDefault();
+      if (gameState === STATE.GAME_OVER) {
+        // Space from game over starts a fresh game.
+        startNewGame();
+      }
       if (plungerReady && !plungerCharging) {
         plungerCharging = true;
         plungerPower = 0;
@@ -162,7 +308,8 @@
     }
 
     if (e.code === "KeyR") {
-      resetToPlunger();
+      // R is a hard restart: new game with full balls.
+      startNewGame();
     }
   });
 
@@ -175,6 +322,7 @@
       plungerReady    = false;
       plungerCharging = false;
       plungerPower    = 0;
+      gameState = STATE.LIVE;
     }
   });
 
@@ -241,13 +389,31 @@
 
         for (const bumper of bumpers) {
           if (Physics.collideBallCircle(ball, bumper, BUMPER_BOUNCE)) {
+            if (gameState === STATE.LIVE && ts - bumper.lastHit > HIT_SCORE_COOLDOWN) {
+              addScore(BUMPER_POINTS, ts);
+              spawnParticles(bumper.x, bumper.y, "255,100,200");
+            }
             bumper.lastHit = ts;
           }
         }
 
         for (const hoop of hoops) {
           if (Physics.collideBallCircle(ball, hoop, HOOP_BOUNCE)) {
+            if (gameState === STATE.LIVE && ts - hoop.lastHit > HIT_SCORE_COOLDOWN) {
+              addScore(HOOP_POINTS, ts);
+              spawnParticles(hoop.x, hoop.y, "255,215,0");
+            }
             hoop.lastHit = ts;
+          }
+        }
+
+        for (const ramp of ramps) {
+          if (Physics.collideBallCircle(ball, ramp, RAMP_BOUNCE)) {
+            if (gameState === STATE.LIVE && ts - ramp.lastHit > HIT_SCORE_COOLDOWN) {
+              addScore(RAMP_POINTS, ts);
+              spawnParticles(ramp.x, ramp.y, "255,184,50");
+            }
+            ramp.lastHit = ts;
           }
         }
 
@@ -258,9 +424,23 @@
       }
     }
 
-    // --- Escape detection: ball left the table (top, bottom, or sides) ---
+    // --- Ball trail (when in play) ---
+    if (ballInPlay && !plungerReady) {
+      ballTrail.push({ x: ball.pos.x, y: ball.pos.y });
+      if (ballTrail.length > BALL_TRAIL_LEN) ballTrail.shift();
+    }
+
+    // --- Particles ---
+    updateParticles(dt);
+
+    // --- Escape / drain detection: ball left the table (top, bottom, or sides) ---
     if (ball.pos.y > H + 30 || ball.pos.y < -30 || ball.pos.x < -30 || ball.pos.x > W + 30) {
-      resetToPlunger();
+      if (!plungerReady && gameState === STATE.LIVE) {
+        loseBall();
+      } else {
+        // Safety net while debugging; should rarely happen.
+        resetToPlunger();
+      }
     }
 
     // --- Render ---
@@ -268,12 +448,15 @@
     Renderer.drawLane(LANE_LEFT, LANE_RIGHT, 40, LANE_BOTTOM);
 
     for (const wall of walls) Renderer.drawWall(wall);
+    for (const ramp of ramps) Renderer.drawRamp(ramp, ts);
     for (const hoop of hoops) Renderer.drawHoop(hoop, ts);
     for (const bumper of bumpers) Renderer.drawBumper(bumper, ts);
 
+    Renderer.drawParticles(particles);
+    Renderer.drawBallTrail(ballTrail);
     Renderer.drawFlipper(leftFlipper, leftFlipperActive());
     Renderer.drawFlipper(rightFlipper, rightFlipperActive());
-    Renderer.drawBall(ball);
+    Renderer.drawBall(ball, ts < onFireUntil);
 
     if (plungerReady) {
       Renderer.drawPlunger(
@@ -284,14 +467,27 @@
       );
     }
 
-    // Hint text
-    if (plungerReady && !plungerCharging) {
+    // Hint text varies a bit by state.
+    if (gameState === STATE.GAME_OVER) {
+      Renderer.drawHint("Game over — press SPACE or R to play again");
+    } else if (plungerReady && !plungerCharging) {
       Renderer.drawHint("Hold SPACE to charge, release to launch");
     } else if (plungerReady && plungerCharging) {
       Renderer.drawHint("Release SPACE to launch!");
     } else {
-      Renderer.drawHint("Z / \u2190 = Left flipper  |  X / \u2192 = Right flipper  |  R = Reset");
+      Renderer.drawHint("Z / \u2190 = Left flipper  |  X / \u2192 = Right flipper  |  R = Restart");
     }
+
+    Renderer.drawHUD({
+      score,
+      highScore,
+      balls: ballsRemaining,
+      state: gameState,
+      combo: comboCount,
+      onFire: ts < onFireUntil,
+    });
+
+    Renderer.drawScreenFlash(ts, screenFlashUntil);
 
     requestAnimationFrame(loop);
   }

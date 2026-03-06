@@ -41,12 +41,52 @@ const Renderer = (() => {
     ctx.stroke();
   }
 
+  /* ── Ball trail ────────────────────────────────────────────── */
+
+  /** Draw fading trail behind the ball when it's moving. */
+  function drawBallTrail(trail) {
+    if (trail.length < 2) return;
+    const r = 12;  // match ball radius
+    for (let i = 0; i < trail.length; i++) {
+      const t = i / trail.length;
+      const alpha = t * t * 0.55;
+      ctx.beginPath();
+      ctx.arc(trail[i].x, trail[i].y, r * 0.95, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255, 150, 60, ${alpha})`;
+      ctx.fill();
+    }
+  }
+
+  /* ── Particles ─────────────────────────────────────────────── */
+
+  /** Draw scoring hit particles (burst effect). */
+  function drawParticles(particles) {
+    for (const p of particles) {
+      const alpha = p.life / p.maxLife;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${p.color},${alpha})`;
+      ctx.fill();
+    }
+  }
+
   /* ── Ball ─────────────────────────────────────────────────── */
 
   /** Draw the basketball with gradient, outline, and seam lines. */
-  function drawBall(ball) {
+  function drawBall(ball, onFire = false) {
     const { x, y } = ball.pos;
     const r = ball.radius;
+
+    // On Fire glow
+    if (onFire) {
+      ctx.beginPath();
+      ctx.arc(x, y, r + 9, 0, Math.PI * 2);
+      const g = ctx.createRadialGradient(x, y, r * 0.7, x, y, r + 9);
+      g.addColorStop(0, "rgba(255, 60, 40, 0.45)");
+      g.addColorStop(1, "rgba(255, 20, 20, 0)");
+      ctx.fillStyle = g;
+      ctx.fill();
+    }
 
     // Drop shadow
     ctx.beginPath();
@@ -274,15 +314,128 @@ const Renderer = (() => {
     }
   }
 
+  /* ── Ramps ────────────────────────────────────────────────── */
+
+  /**
+   * Draw a ramp scoop (high-value target at top of ramp wall).
+   * Metallic look; flashes when hit.
+   */
+  function drawRamp(ramp, now) {
+    const { x, y, radius, lastHit } = ramp;
+    const hitAge = now - lastHit;
+    const flashing = lastHit > 0 && hitAge < 250;
+
+    if (flashing) {
+      ctx.beginPath();
+      ctx.arc(x, y, radius + 6, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255, 180, 50, ${0.4 * (1 - hitAge / 250)})`;
+      ctx.fill();
+    }
+
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    const g = ctx.createRadialGradient(x - radius * 0.3, y - radius * 0.3, 2, x, y, radius);
+    g.addColorStop(0, flashing ? "#ffe0a0" : "#c0c0d0");
+    g.addColorStop(1, flashing ? "#b8860b" : "#606070");
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.strokeStyle = flashing ? "#ffd700" : "rgba(255, 255, 255, 0.4)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+    ctx.font = "11px -apple-system, system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("RAMP", x, y);
+  }
+
+  /* ── Screen flash ──────────────────────────────────────────── */
+
+  /** Brief red-orange flash when On Fire triggers. */
+  function drawScreenFlash(now, flashUntil) {
+    if (now >= flashUntil) return;
+    const t = (flashUntil - now) / 250;
+    ctx.fillStyle = `rgba(255, 60, 40, ${0.15 * t})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+
   /* ── Text helpers ─────────────────────────────────────────── */
 
   /** Draw a small hint string near the bottom of the canvas. */
   function drawHint(text) {
     ctx.fillStyle = "rgba(255, 255, 255, 0.15)";
-    ctx.font = "11px sans-serif";
+    ctx.font = "11px -apple-system, system-ui, sans-serif";
     ctx.textAlign = "left";
     ctx.textBaseline = "bottom";
     ctx.fillText(text, 12, H - 8);
+  }
+
+  /**
+   * Heads-up display: score, high score, balls, and simple state overlays.
+   * Keeps all HUD drawing in one place so game.js just passes the numbers.
+   */
+  function drawHUD({ score, highScore, balls, state, combo, onFire }) {
+    const pad = 12;
+
+    // Top-left: current score
+    ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+    ctx.font = "13px -apple-system, system-ui, sans-serif";
+    ctx.textBaseline = "top";
+
+    ctx.textAlign = "left";
+    ctx.fillText(`Score ${String(score).padStart(5, "0")}`, pad, pad);
+
+    // Top-right: high score
+    ctx.textAlign = "right";
+    ctx.fillText(`High ${String(highScore).padStart(5, "0")}`, W - pad, pad);
+
+    // Top-center: balls remaining
+    ctx.textAlign = "center";
+    ctx.fillText(`Balls ${balls}`, W / 2, pad);
+
+    // Combo and On Fire below the top row
+    const row2 = pad + 18;
+    if (combo > 0) {
+      ctx.textAlign = "left";
+      ctx.fillStyle = "rgba(255, 220, 120, 0.95)";
+      ctx.fillText(`Combo x${combo}`, pad, row2);
+    }
+    if (onFire) {
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#ff6600";
+      ctx.font = "bold 14px -apple-system, system-ui, sans-serif";
+      ctx.fillText("ON FIRE!", W / 2, row2);
+      ctx.font = "13px -apple-system, system-ui, sans-serif";
+    }
+
+    // Center overlays for state
+    if (state === "gameover") {
+      const boxW = W * 0.7;
+      const boxH = 90;
+      const x = (W - boxW) / 2;
+      const y = H * 0.35;
+
+      ctx.fillStyle = "rgba(0, 0, 0, 0.65)";
+      ctx.fillRect(x, y, boxW, boxH);
+
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "24px -apple-system, system-ui, sans-serif";
+      ctx.fillText("GAME OVER", W / 2, y + boxH * 0.35);
+
+      ctx.font = "13px -apple-system, system-ui, sans-serif";
+      ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+      ctx.fillText("Press SPACE or R to play again", W / 2, y + boxH * 0.65);
+    } else if (state === "ready") {
+      // Light \"Ready\" label above the flippers.
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = "12px -apple-system, system-ui, sans-serif";
+      ctx.fillStyle = "rgba(255, 255, 255, 0.35)";
+      ctx.fillText("Ball ready — launch when you like", W / 2, H * 0.78);
+    }
   }
 
   /* ── Public API ───────────────────────────────────────────── */
@@ -292,12 +445,17 @@ const Renderer = (() => {
     clear,
     drawWall,
     drawBall,
+    drawBallTrail,
+    drawParticles,
     drawFlipper,
     drawBumper,
     drawHoop,
+    drawRamp,
     drawLane,
     drawPlunger,
     drawHint,
+    drawHUD,
+    drawScreenFlash,
     ctx: () => ctx,
     width: () => W,
     height: () => H,
