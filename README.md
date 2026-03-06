@@ -1,22 +1,10 @@
 # playground-0001
 
-A simple basketball web app for tracking:
-- Team names
-- Team scores
-- Team fouls
-- Timeouts
-- Game clock
-- Shot clock
-- Period
-- Possession
-- Local autosave
-- JSON export
+A 1v1 half-court basketball game built with vanilla HTML Canvas and JavaScript.
 
-## Run locally
+## Play
 
-Open `index.html` directly in your browser.
-
-Or run a local server from this folder:
+Open `index.html` in your browser, or run a local server:
 
 ```bash
 python3 -m http.server 8080
@@ -24,19 +12,27 @@ python3 -m http.server 8080
 
 Then visit `http://localhost:8080`.
 
-## Version history
+## Controls
 
-- `v0.1.0` - Basic scoreboard (scores, fouls, clocks, period).
-- `v0.2.0` - Added possession, team timeouts, autosave, and game export.
+| Key | Action |
+| --- | --- |
+| Arrow keys / WASD | Move |
+| Hold Space | Charge shot (release to shoot) |
+| Shift | Sprint |
+| Enter | Start game / Play again |
 
-## Copyright and trademark safety notes
+## How it works
 
-This project is designed to avoid common sports IP issues:
-- Uses generic basketball functionality only (scoreboard mechanics).
-- Does not use official league/team logos, jerseys, trade dress, or branded media.
-- Does not claim affiliation with any league/team.
-- Does not pull official league statistics/content from protected sources.
+- **1v1 half court** -- you (blue) vs CPU (red)
+- **First to 21 wins**
+- Shots inside the arc are worth **2**, outside are worth **3**
+- Release the shot when the power bar is in the **green zone** for best accuracy
+- Get close to the ball carrier to attempt a **steal**
+- After a miss, race the CPU for the **rebound**
 
-If you later add external sports data, use a licensed API and follow its terms.
+## Tech
 
-This is practical product guidance, not legal advice.
+- Pure HTML / CSS / Canvas -- no frameworks or dependencies
+- Single `app.js` game engine (~500 lines)
+- 60 fps game loop with delta-time physics
+- Simple AI with offensive/defensive behaviors
