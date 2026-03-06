@@ -3,13 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Basketball</title>
+    <title>Basketball Pinball</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <div class="game-wrapper">
-      <canvas id="court" width="800" height="540"></canvas>
+      <canvas id="court" width="480" height="800"></canvas>
     </div>
-    <script src="app.js"></script>
+
+    <!-- Scripts loaded in dependency order (no build step) -->
+    <script src="js/physics.js"></script>
+    <script src="js/renderer.js"></script>
+    <script src="js/game.js"></script>
   </body>
 </html>
