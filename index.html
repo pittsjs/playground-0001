@@ -3,115 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Basketball Scoreboard</title>
+    <title>Basketball</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <main class="app">
-      <header>
-        <h1>Basketball Scoreboard</h1>
-        <p>Simple game tracker for quick pickup games.</p>
-        <p class="version">Version <span id="app-version">0.2.0</span></p>
-      </header>
-
-      <section class="clock-panel card">
-        <div class="clock-group">
-          <p class="label">Game Clock</p>
-          <p class="clock" id="game-clock">10:00</p>
-          <div class="clock-controls">
-            <button id="start-stop-btn" type="button">Start</button>
-            <button id="reset-game-clock-btn" type="button" class="secondary">Reset</button>
-          </div>
-        </div>
-
-        <div class="clock-group">
-          <p class="label">Shot Clock</p>
-          <p class="clock shot" id="shot-clock">24</p>
-          <div class="clock-controls">
-            <button id="reset-shot-clock-btn" type="button">Reset 24</button>
-            <button id="set-14-btn" type="button" class="secondary">Set 14</button>
-          </div>
-        </div>
-
-        <div class="period-group">
-          <p class="label">Period</p>
-          <p class="period" id="period-display">1</p>
-          <div class="period-controls">
-            <button id="prev-period-btn" type="button" class="secondary">-</button>
-            <button id="next-period-btn" type="button">+</button>
-          </div>
-        </div>
-      </section>
-
-      <section class="meta-panel card">
-        <div>
-          <p class="label">Possession</p>
-          <div class="possession-controls">
-            <button id="home-possession-btn" type="button">Home Ball</button>
-            <button id="away-possession-btn" type="button" class="secondary">Away Ball</button>
-          </div>
-        </div>
-      </section>
-
-      <section class="teams-grid">
-        <article class="team card" data-team="home">
-          <div class="team-header">
-            <input id="home-name" value="Home" aria-label="Home team name" />
-            <button type="button" class="danger reset-team-btn" data-team="home">Reset Team</button>
-          </div>
-          <p class="team-score" id="home-score">0</p>
-          <div class="score-controls">
-            <button type="button" class="score-btn" data-team="home" data-points="1">+1</button>
-            <button type="button" class="score-btn" data-team="home" data-points="2">+2</button>
-            <button type="button" class="score-btn" data-team="home" data-points="3">+3</button>
-          </div>
-          <div class="foul-row">
-            <span>Fouls:</span>
-            <strong id="home-fouls">0</strong>
-            <button type="button" class="foul-btn secondary" data-team="home" data-change="-1">-</button>
-            <button type="button" class="foul-btn" data-team="home" data-change="1">+</button>
-          </div>
-          <div class="foul-row">
-            <span>Timeouts:</span>
-            <strong id="home-timeouts">0</strong>
-            <button type="button" class="timeout-btn secondary" data-team="home" data-change="-1">-</button>
-            <button type="button" class="timeout-btn" data-team="home" data-change="1">+</button>
-          </div>
-        </article>
-
-        <article class="team card" data-team="away">
-          <div class="team-header">
-            <input id="away-name" value="Away" aria-label="Away team name" />
-            <button type="button" class="danger reset-team-btn" data-team="away">Reset Team</button>
-          </div>
-          <p class="team-score" id="away-score">0</p>
-          <div class="score-controls">
-            <button type="button" class="score-btn" data-team="away" data-points="1">+1</button>
-            <button type="button" class="score-btn" data-team="away" data-points="2">+2</button>
-            <button type="button" class="score-btn" data-team="away" data-points="3">+3</button>
-          </div>
-          <div class="foul-row">
-            <span>Fouls:</span>
-            <strong id="away-fouls">0</strong>
-            <button type="button" class="foul-btn secondary" data-team="away" data-change="-1">-</button>
-            <button type="button" class="foul-btn" data-team="away" data-change="1">+</button>
-          </div>
-          <div class="foul-row">
-            <span>Timeouts:</span>
-            <strong id="away-timeouts">0</strong>
-            <button type="button" class="timeout-btn secondary" data-team="away" data-change="-1">-</button>
-            <button type="button" class="timeout-btn" data-team="away" data-change="1">+</button>
-          </div>
-        </article>
-      </section>
-
-      <section class="actions-row">
-        <button id="new-game-btn" type="button" class="danger">New Game</button>
-        <button id="export-btn" type="button" class="secondary">Export Game JSON</button>
-      </section>
-      <p class="legal-note">Unofficial app. Not affiliated with the NBA, WNBA, or any professional team/league.</p>
-    </main>
-
+    <div class="game-wrapper">
+      <canvas id="court" width="800" height="540"></canvas>
+    </div>
     <script src="app.js"></script>
   </body>
 </html>
