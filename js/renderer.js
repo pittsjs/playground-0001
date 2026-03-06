@@ -90,8 +90,8 @@ const Renderer = (() => {
     const dir = Vec.normalize(Vec.sub({ x: seg.x2, y: seg.y2 }, { x: seg.x1, y: seg.y1 }));
     const perp = { x: -dir.y, y: dir.x };
 
-    const pivotHalf = 10;  // half-width at the pivot end
-    const tipHalf = 5;     // half-width at the tip end
+    const pivotHalf = 12;  // half-width at the pivot end
+    const tipHalf = 6;     // half-width at the tip end
 
     // Tapered quadrilateral
     ctx.beginPath();
@@ -173,6 +173,107 @@ const Renderer = (() => {
     }
   }
 
+  /* ── Bumpers ──────────────────────────────────────────────── */
+
+  /**
+   * Draw a circular bumper with a gradient fill, glow ring, and
+   * an expanding ripple that plays for 200 ms after the ball hits it.
+   */
+  function drawBumper(bumper, now) {
+    const { x, y, radius, lastHit } = bumper;
+    const hitAge = now - lastHit;
+    const flashing = lastHit > 0 && hitAge < 200;
+
+    // Outer glow
+    ctx.beginPath();
+    ctx.arc(x, y, radius + 8, 0, Math.PI * 2);
+    ctx.fillStyle = flashing
+      ? "rgba(255, 100, 200, 0.35)"
+      : "rgba(120, 80, 255, 0.12)";
+    ctx.fill();
+
+    // Body gradient
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    const g = ctx.createRadialGradient(
+      x - radius * 0.3, y - radius * 0.3, 2, x, y, radius
+    );
+    if (flashing) {
+      g.addColorStop(0, "#ffffff");
+      g.addColorStop(1, "#ff66cc");
+    } else {
+      g.addColorStop(0, "#c084fc");
+      g.addColorStop(1, "#7c3aed");
+    }
+    ctx.fillStyle = g;
+    ctx.fill();
+
+    // Ring outline
+    ctx.strokeStyle = flashing
+      ? "rgba(255, 255, 255, 0.8)"
+      : "rgba(200, 160, 255, 0.5)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Hit ripple (expanding ring that fades out)
+    if (flashing) {
+      const t = hitAge / 200;
+      const rippleR = radius + t * 20;
+      ctx.beginPath();
+      ctx.arc(x, y, rippleR, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(255, 100, 200, ${1 - t})`;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+  }
+
+  /* ── Hoops ─────────────────────────────────────────────────── */
+
+  /**
+   * Draw a basketball hoop target: backboard, orange rim, net lines.
+   * Glows gold for 300 ms after being hit.
+   */
+  function drawHoop(hoop, now) {
+    const { x, y, radius, lastHit } = hoop;
+    const hitAge = now - lastHit;
+    const flashing = lastHit > 0 && hitAge < 300;
+
+    // Hit glow (behind everything)
+    if (flashing) {
+      const t = hitAge / 300;
+      ctx.beginPath();
+      ctx.arc(x, y, radius + 12, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255, 215, 0, ${0.3 * (1 - t)})`;
+      ctx.fill();
+    }
+
+    // Backboard (small rectangle above the rim)
+    const boardW = radius * 1.6;
+    const boardH = 5;
+    ctx.fillStyle = flashing ? "#ffd700" : "rgba(255, 255, 255, 0.6)";
+    ctx.fillRect(x - boardW / 2, y - radius - boardH - 2, boardW, boardH);
+
+    // Rim (thick orange circle)
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.strokeStyle = flashing ? "#ffd700" : "#ff6b35";
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // Net lines (simple drooping V-shapes inside the rim)
+    ctx.strokeStyle = flashing
+      ? "rgba(255, 215, 0, 0.6)"
+      : "rgba(255, 255, 255, 0.2)";
+    ctx.lineWidth = 1;
+    const netBottom = y + radius * 0.7;
+    for (let i = -1; i <= 1; i++) {
+      ctx.beginPath();
+      ctx.moveTo(x + i * radius * 0.5, y + radius * 0.3);
+      ctx.lineTo(x + i * radius * 0.3, netBottom);
+      ctx.stroke();
+    }
+  }
+
   /* ── Text helpers ─────────────────────────────────────────── */
 
   /** Draw a small hint string near the bottom of the canvas. */
@@ -192,6 +293,8 @@ const Renderer = (() => {
     drawWall,
     drawBall,
     drawFlipper,
+    drawBumper,
+    drawHoop,
     drawLane,
     drawPlunger,
     drawHint,
