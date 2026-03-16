@@ -37,6 +37,7 @@
   const BUMPER_POINTS = 50;
   const HOOP_POINTS = 250;
   const RAMP_POINTS = 500;
+  const SLINGSHOT_POINTS = 35;
   const HIT_SCORE_COOLDOWN = 120; // ms between scoring from the same object
 
   const BALLS_PER_GAME = 3;
@@ -160,6 +161,19 @@
     { x: 410, y: 455, radius: 28, lastHit: 0 },   // right ramp scoop
   ];
 
+  /* ── Slingshots (autofire near the flippers) ──────────────────
+   *
+   * These are not standard walls in the `walls` array. Instead we
+   * treat them like autofire devices: a collision gives the ball
+   * an extra kick and awards points.
+   */
+  const slingshots = [
+    // Left slingshot, angled up toward the center.
+    { x1: 70,  y1: 840, x2: 180, y2: 760, lastHit: 0 },
+    // Right slingshot, mirror of left.
+    { x1: 430, y1: 760, x2: 540, y2: 840, lastHit: 0 },
+  ];
+
   /* ── Ball + plunger + score state ──────────────────────────── */
 
   let ball = Physics.createBall(PLUNGER_BALL_X, PLUNGER_BALL_Y, BALL_RADIUS);
@@ -266,9 +280,12 @@
     score += Math.round(basePoints * mult);
     comboCount += 1;
     lastComboHitTime = ts;
-    if (comboCount >= ON_FIRE_TRIGGER) {
+    if (comboCount >= ON_FIRE_TRIGGER && ts >= onFireUntil) {
       onFireUntil = ts + ON_FIRE_DURATION;
       screenFlashUntil = ts + 250;
+      if (typeof Sound !== "undefined") {
+        Sound.onFireStart();
+      }
     }
   }
 
@@ -285,6 +302,9 @@
       gameState = STATE.GAME_OVER;
       maybeUpdateHighScore();
       resetToPlunger();
+    }
+    if (typeof Sound !== "undefined") {
+      Sound.drain();
     }
   }
 
@@ -307,6 +327,20 @@
       }
     }
 
+    // Flipper buttons: play a click on initial press (not every frame).
+    if (
+      (e.code === "KeyZ" || e.code === "ArrowLeft" ||
+       e.code === "KeyX" || e.code === "ArrowRight") &&
+      typeof Sound !== "undefined"
+    ) {
+      Sound.flipper();
+    }
+
+    // M toggles mute.
+    if (e.code === "KeyM" && typeof Sound !== "undefined") {
+      Sound.toggleMute();
+    }
+
     if (e.code === "KeyR") {
       // R is a hard restart: new game with full balls.
       startNewGame();
@@ -323,6 +357,9 @@
       plungerCharging = false;
       plungerPower    = 0;
       gameState = STATE.LIVE;
+      if (typeof Sound !== "undefined") {
+        Sound.launch();
+      }
     }
   });
 
@@ -392,6 +429,9 @@
             if (gameState === STATE.LIVE && ts - bumper.lastHit > HIT_SCORE_COOLDOWN) {
               addScore(BUMPER_POINTS, ts);
               spawnParticles(bumper.x, bumper.y, "255,100,200");
+              if (typeof Sound !== "undefined") {
+                Sound.bumper();
+              }
             }
             bumper.lastHit = ts;
           }
@@ -402,6 +442,9 @@
             if (gameState === STATE.LIVE && ts - hoop.lastHit > HIT_SCORE_COOLDOWN) {
               addScore(HOOP_POINTS, ts);
               spawnParticles(hoop.x, hoop.y, "255,215,0");
+              if (typeof Sound !== "undefined") {
+                Sound.hoop();
+              }
             }
             hoop.lastHit = ts;
           }
@@ -412,8 +455,31 @@
             if (gameState === STATE.LIVE && ts - ramp.lastHit > HIT_SCORE_COOLDOWN) {
               addScore(RAMP_POINTS, ts);
               spawnParticles(ramp.x, ramp.y, "255,184,50");
+              if (typeof Sound !== "undefined") {
+                Sound.ramp();
+              }
             }
             ramp.lastHit = ts;
+          }
+        }
+
+        // Slingshots: behave like short walls that also kick the ball.
+        for (const sling of slingshots) {
+          if (Physics.collideBallWall(ball, sling, WALL_BOUNCE)) {
+            if (gameState === STATE.LIVE && ts - sling.lastHit > HIT_SCORE_COOLDOWN) {
+              addScore(SLINGSHOT_POINTS, ts);
+              // Kick the ball away from the slingshot surface.
+              const closest = Physics.closestPointOnSegment(ball.pos, sling);
+              const away = Vec.normalize(Vec.sub(ball.pos, closest));
+              const strength = 550;
+              ball.vel.x += away.x * strength;
+              ball.vel.y += away.y * strength;
+              spawnParticles(closest.x, closest.y, "255,180,120");
+              if (typeof Sound !== "undefined") {
+                Sound.slingshot();
+              }
+            }
+            sling.lastHit = ts;
           }
         }
 
@@ -448,6 +514,7 @@
     Renderer.drawLane(LANE_LEFT, LANE_RIGHT, 40, LANE_BOTTOM);
 
     for (const wall of walls) Renderer.drawWall(wall);
+    for (const sling of slingshots) Renderer.drawSlingshot(sling);
     for (const ramp of ramps) Renderer.drawRamp(ramp, ts);
     for (const hoop of hoops) Renderer.drawHoop(hoop, ts);
     for (const bumper of bumpers) Renderer.drawBumper(bumper, ts);
@@ -485,6 +552,7 @@
       state: gameState,
       combo: comboCount,
       onFire: ts < onFireUntil,
+      muted: typeof Sound !== "undefined" ? Sound.isMuted() : false,
     });
 
     Renderer.drawScreenFlash(ts, screenFlashUntil);

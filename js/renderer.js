@@ -41,6 +41,18 @@ const Renderer = (() => {
     ctx.stroke();
   }
 
+  /**
+   * Draw a slingshot paddle. For now this is just a brighter wall segment,
+   right above the flippers. */
+  function drawSlingshot(sling) {
+    ctx.beginPath();
+    ctx.moveTo(sling.x1, sling.y1);
+    ctx.lineTo(sling.x2, sling.y2);
+    ctx.strokeStyle = "rgba(255, 200, 120, 0.8)";
+    ctx.lineWidth = 4;
+    ctx.stroke();
+  }
+
   /* ── Ball trail ────────────────────────────────────────────── */
 
   /** Draw fading trail behind the ball when it's moving. */
@@ -375,7 +387,7 @@ const Renderer = (() => {
    * Heads-up display: score, high score, balls, and simple state overlays.
    * Keeps all HUD drawing in one place so game.js just passes the numbers.
    */
-  function drawHUD({ score, highScore, balls, state, combo, onFire }) {
+  function drawHUD({ score, highScore, balls, state, combo, onFire, muted }) {
     const pad = 12;
 
     // Top-left: current score
@@ -394,7 +406,7 @@ const Renderer = (() => {
     ctx.textAlign = "center";
     ctx.fillText(`Balls ${balls}`, W / 2, pad);
 
-    // Combo and On Fire below the top row
+    // Combo, On Fire, and mute status below the top row
     const row2 = pad + 18;
     if (combo > 0) {
       ctx.textAlign = "left";
@@ -407,6 +419,13 @@ const Renderer = (() => {
       ctx.font = "bold 14px -apple-system, system-ui, sans-serif";
       ctx.fillText("ON FIRE!", W / 2, row2);
       ctx.font = "13px -apple-system, system-ui, sans-serif";
+    }
+
+    if (muted) {
+      ctx.textAlign = "right";
+      ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
+      ctx.font = "11px -apple-system, system-ui, sans-serif";
+      ctx.fillText("Muted (M)", W - pad, pad + 18);
     }
 
     // Center overlays for state
@@ -444,6 +463,7 @@ const Renderer = (() => {
     init,
     clear,
     drawWall,
+    drawSlingshot,
     drawBall,
     drawBallTrail,
     drawParticles,

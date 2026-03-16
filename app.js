@@ -444,7 +444,7 @@
         gs = ST.REBOUND;
         addMsg("MISS", BASKET.x, BASKET.y + 25, C.muted, 18);
       }
-    } else {
+  } else {
       ball.x = lerp(ball.from.x, BASKET.x, t);
       ball.y = lerp(ball.from.y, BASKET.y, t);
       ball.z = Math.sin(t * Math.PI) * 80;
